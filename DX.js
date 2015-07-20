@@ -24,5 +24,28 @@ var DX = {
         });
 
         return val;
+    },
+
+    /**
+     * Merge beta to alpha object.
+     *
+     * @param alpha
+     * @param beta
+     * @returns object
+     */
+    mergeObjects: function (alpha, beta) {
+        if (beta) {
+            for (var key in beta) {
+                if (typeof beta[key] === 'object' && typeof alpha[key] === 'object') {
+                    for (var subKey in beta[key]) {
+                        alpha[key][subKey] = beta[key][subKey];
+                    }
+                } else {
+                    alpha[key] = beta[key];
+                }
+            }
+        }
+
+        return alpha;
     }
 };
