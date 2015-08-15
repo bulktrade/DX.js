@@ -1,5 +1,26 @@
 DX.OrientDB = {
     KendoUI: {
+        /**
+         *
+         * @param $orientDBService
+         * @param model
+         * @param successFunction
+         * @param errorFunction
+         * @returns {*}
+         * @constructor
+         */
+        GridByModel: function($orientDBService, model, successFunction, errorFunction) {
+            return this.Grid($orientDBService, model.className, model.options, successFunction, errorFunction);
+        },
+        /**
+         *
+         * @param $orientDBService
+         * @param className
+         * @param options
+         * @param successFunction
+         * @param errorFunction
+         * @constructor
+         */
         Grid: function($orientDBService, className, options, successFunction, errorFunction) {
             var instance = this;
 
@@ -8,7 +29,6 @@ DX.OrientDB = {
                     /**
                      * Get Kendo UI Grid columns from OrientDB Class schema.
                      *
-                     * @param {Object} orientDBClassSchema
                      * @param {Object} columns
                      * @param {Object} $translate
                      *
@@ -107,8 +127,7 @@ DX.OrientDB = {
                     /**
                      * Get Kendo UI Grid schema from OrientDB Class schema.
                      *
-                     * @param {Object} orientDBClassSchema
-                     * @param {Object} defaults
+                     * @param {Object}|null defaults
                      *
                      * @returns {{data: null, total: null, errors: string, model: {id: string, fields: {}}}}
                      */
@@ -181,13 +200,13 @@ DX.OrientDB = {
                      * Get Kendo UI Grid Data Source.
                      *
                      * @param className
-                     * @param options
+                     * @param defaults
                      * @returns {kendo.data.DataSource}
                      */
-                    instance.getDataSource = function(className, options) {
+                    instance.getDataSource = function(className, defaults) {
                         var columns = [];
 
-                        var dataSource = new kendo.data.DataSource({
+                        var options = {
                             transport: {
                                 read: function(options) {
                                     var query = DX.sprintf('SELECT %s FROM %s', columns, className);
@@ -196,7 +215,16 @@ DX.OrientDB = {
                                         query.skip();
                                     }
 
-                                    $orientDBService.query(query, options.take ? options.take : this.defaultPageSize);
+                                    $orientDBService.query(
+                                        query,
+                                        options.take ? options.take : this.defaultPageSize,
+                                        '*',
+                                        function(result) {
+                                            options.success(result);
+                                        },
+                                        function (result) {
+                                            options.error(result);
+                                        });
 
                                     //beforeSend: function (req) {
                                     //    req.setRequestHeader('Authorization', $http.defaults.headers.common.Authorization);
@@ -227,128 +255,18 @@ DX.OrientDB = {
                                     return options;
                                 }
                             },
-                            sort: {
-                                field: "created",
-                                dir: "ASC"
-                            },
                             serverSorting: true,
                             batch: true,
                             pageSize: 20,
                             serverPaging: true,
                             serverFiltering: true,
                             autoSync: false,
-                            error: function (e) {
-                                var result = '';
-                                result += '<div class="alert alert-danger" role="alert">';
+                            schema: instance.getSchema(options.schemaDefaults)
+                        };
 
-                                if (e.status === 'customerror') {
-                                    $.each(e.errors.validationErrors, function(key, value) {
-                                        result += '<strong>' + kendo.htmlEncode(translations['Users.fields.' + key]) + '</strong>: ' + kendo.htmlEncode(value) + '<br>';
-                                    });
-                                } else {
-                                    result += e.errorThrown;
-                                }
-
-                                result += '</div>';
-
-                                result += '<div style="text-align: center;"><button class="btn">' + kendo.htmlEncode(translations['Button.Close']) + '</button></div>'
-
-                                var errorMessageWindow = $('<div id="errorMessage">' + result + '</div>');
-
-                                $('body').append(errorMessageWindow);
-
-                                errorMessageWindow.kendoWindow({
-                                    width: "500px",
-                                    title: e.errors ? e.errors.message : translations['Error'],
-                                    autoFocus: true,
-                                    modal: true,
-                                    resizable: false,
-                                    actions: [
-                                        "Close"
-                                    ],
-                                    close: function(e) {
-                                        errorMessageWindow.remove();
-                                    },
-                                    open: function() {
-                                        this.center();
-                                        var errorWindowElem = this;
-
-                                        errorMessageWindow.find('.btn').click(function() {
-                                            errorWindowElem.close();
-                                        });
-                                    }
-                                });
-
-                                $scope.grid.one("dataBinding", function (e) {
-                                    e.preventDefault();   // cancel grid rebind if error occurs
-                                });
-                            },
-                            schema: {
-                                data: "_embedded['backend-users']",
-                                total: "page.totalElements",
-                                errors: "error",
-                                model: {
-                                    id: "id",
-                                    fields: {
-                                        avatar: {
-                                            editable: true
-                                        },
-                                        gender: {
-                                            editable: true,
-                                            defaultValue: 'MAN',
-                                            validation: {
-                                                required: true
-                                            }
-                                        },
-                                        firstname: {
-                                            editable: true,
-                                            validation: {
-                                                required: true
-                                            }
-                                        },
-                                        lastname: {
-                                            editable: true,
-                                            validation: {
-                                                required: true
-                                            }
-                                        },
-                                        emailAddress: {
-                                            editable: true,
-                                            validation: {
-                                                required: true,
-                                                pattern: "[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
-                                            }
-                                        },
-                                        name: {
-                                            editable: true,
-                                            validation: {
-                                                required: true
-                                            }
-                                        },
-                                        password: {
-                                            editable: true,
-                                            min: 5
-                                        },
-                                        lang: {
-                                            editable: true,
-                                            defaultValue: 'de',
-                                            validation: {
-                                                required: true
-                                            }
-                                        },
-                                        rights: {
-
-                                        },
-                                        created: {
-                                            editable: true,
-                                            type: "date"
-                                        }
-                                    }
-                                }
-                            }
-                        });
-
-                        return dataSource;
+                        return new kendo.data.DataSource(
+                            DX.mergeObjects(options, defaults)
+                        );
                     };
 
                     /**
@@ -374,7 +292,7 @@ DX.OrientDB = {
                         }
 
                         var grid = {
-                            dataSource: this.getDataSource(className, options.dataSourceOptions),
+                            dataSource: instance.getDataSource(className, options.dataSourceOptions),
                             height: DX.KendoUI.Grid.defaultHeight,
                             pageable: {
                                 refresh: true,
@@ -411,7 +329,12 @@ DX.OrientDB = {
                     successFunction(instance);
                 },
                 function(data, status, headers, config) {
-                    errorFunction();
+                    errorFunction({
+                        data: data,
+                        status: status,
+                        headers: headers,
+                        config: config
+                    });
                 });
         }
     }
