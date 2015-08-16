@@ -38,42 +38,45 @@ DX.OrientDB = {
                         var result = [];
                         var column;
 
-                        for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
-                            var item = orientDBClassSchema.properties[i];
+                        for (var columnName in columns) {
+                            for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
+                                var item = orientDBClassSchema.properties[i];
 
-                            if (typeof columns[item.name] != 'undefined') { // only defined columns
-                                column = {
-                                    field: item.name,
-                                    sortable: true,
-                                    filterable: true,
-                                    editable: true,
-                                    title: $translate ? $translate.instant(orientDBClassSchema.name + '.' + item.name) : item.name
-                                };
+                                if (item.name == columnName) {
+                                    column = {
+                                        field: item.name,
+                                        sortable: true,
+                                        filterable: true,
+                                        editable: true,
+                                        title: $translate ? $translate.instant(orientDBClassSchema.name + '.' + item.name) : item.name
+                                    };
 
-                                switch (item.type) {
-                                    case 'DATE':
-                                    case 'DATETIME':
-                                        column.template = function(item) {
-                                            return kendo.toString(item.created, "G");
-                                        };
+                                    switch (item.type) {
+                                        case 'DATE':
+                                        case 'DATETIME':
+                                            column.template = function(item) {
+                                                return kendo.toString(item.created, "G");
+                                            };
 
-                                        column.filterable = {
-                                            ui: "datetimepicker" // use Kendo UI DateTimePicker
-                                        };
+                                            column.filterable = {
+                                                ui: "datetimepicker" // use Kendo UI DateTimePicker
+                                            };
 
-                                        column.editor = function(container, options) {
-                                            container.prev().hide();
-                                            container.hide();
-                                        };
+                                            column.editor = function(container, options) {
+                                                container.prev().hide();
+                                                container.hide();
+                                            };
 
-                                        break;
+                                            break;
+                                    }
+
+                                    if (columns[item.name]) {
+                                        column = DX.mergeObjects(column, columns[item.name]);
+                                    }
+
+                                    result.push(column);
+                                    break;
                                 }
-
-                                if (defaults) {
-                                    column = DX.mergeObjects(column, columns[item.name]);
-                                }
-
-                                result.push(column);
                             }
                         }
 
@@ -101,25 +104,25 @@ DX.OrientDB = {
                             }
                         };
 
-                        if (defaults) {
-                            column = DX.mergeObjects(column, defaults['commands']);
+                        if (columns['commands']) {
+                            column = DX.mergeObjects(column, columns['commands']);
                         }
 
                         result.push(column);
 
-                        if (selectColumns) {
-                            var tmp = result;
-                            result = [];
-
-                            for (var i = 0; i < selectColumns.length; i++) {
-                                for (var j = 0; j < tmp.length; j++) {
-                                    if (tmp[j].field == selectColumns[i]) {
-                                        result.push(tmp[j]);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                        //if (selectColumns) {
+                        //    var tmp = result;
+                        //    result = [];
+                        //
+                        //    for (var i = 0; i < selectColumns.length; i++) {
+                        //        for (var j = 0; j < tmp.length; j++) {
+                        //            if (tmp[j].field == selectColumns[i]) {
+                        //                result.push(tmp[j]);
+                        //                break;
+                        //            }
+                        //        }
+                        //    }
+                        //}
 
                         return result;
                     };
@@ -127,14 +130,14 @@ DX.OrientDB = {
                     /**
                      * Get Kendo UI Grid schema from OrientDB Class schema.
                      *
-                     * @param {Object}|null defaults
+                     * @param {Object} defaults
                      *
                      * @returns {{data: null, total: null, errors: string, model: {id: string, fields: {}}}}
                      */
                     instance.getSchema = function(defaults) {
                         var schema = {
-                            data: null,
-                            total: null,
+                            data: 'result',
+                            total: 'total',
                             errors: 'error',
                             model: {
                                 id: '@rid',
@@ -206,21 +209,33 @@ DX.OrientDB = {
                     instance.getDataSource = function(className, defaults) {
                         var columns = [];
 
-                        var options = {
+                        var dataSourceOptions = {
                             transport: {
                                 read: function(options) {
                                     var query = DX.sprintf('SELECT %s FROM %s', columns, className);
 
-                                    if (options.take) {
-                                        query.skip();
-                                    }
+                                    //if (options.take) {
+                                    //    query.skip();
+                                    //}
 
                                     $orientDBService.query(
                                         query,
                                         options.take ? options.take : this.defaultPageSize,
-                                        '*',
+                                        '*:-1',
                                         function(result) {
-                                            options.success(result);
+                                            $orientDBService.query(
+                                                DX.sprintf('SELECT COUNT(*) FROM %s', className),
+                                                options.take ? options.take : this.defaultPageSize,
+                                                '*:-1',
+                                                function(countResult) {
+                                                    console.log(countResult);
+                                                    result['total'] = countResult;
+                                                    options.success(result);
+                                                },
+                                                function(result) {
+                                                    options.error(result);
+                                                }
+                                            );
                                         },
                                         function (result) {
                                             options.error(result);
@@ -265,7 +280,7 @@ DX.OrientDB = {
                         };
 
                         return new kendo.data.DataSource(
-                            DX.mergeObjects(options, defaults)
+                            DX.mergeObjects(dataSourceOptions, defaults)
                         );
                     };
 
@@ -292,7 +307,10 @@ DX.OrientDB = {
                         }
 
                         var grid = {
-                            dataSource: instance.getDataSource(className, options.dataSourceOptions),
+                            dataSource: instance.getDataSource(
+                                className,
+                                options.dataSourceOptions
+                            ),
                             height: DX.KendoUI.Grid.defaultHeight,
                             pageable: {
                                 refresh: true,
@@ -313,10 +331,8 @@ DX.OrientDB = {
                             dataBound: null,
                             edit: DX.KendoUI.Grid.defaultEditFunction,
                             editable: 'popup',
-                            columns: DX.OrientDB.getKendoUIGridColumns(
-                                instance.getSchema(orientDBClassSchema, options.schemaDefaults),
+                            columns: instance.getColumns(
                                 options.columnDefaults,
-                                options.columnOrder,
                                 options.translate
                             )
                         };
@@ -326,7 +342,7 @@ DX.OrientDB = {
                         return DX.mergeObjects(grid, options.defaults);
                     };
 
-                    successFunction(instance);
+                    instance.getGridOptions(className, options, successFunction, errorFunction);
                 },
                 function(data, status, headers, config) {
                     errorFunction({
