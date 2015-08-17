@@ -76,7 +76,22 @@ var DX = {
      */
     mergeFunctions: function(f1, f2) {
         return function() {
-            return this.mergeObjects(f1.call(this, arguments), f2.call(this, arguments));
+            var r1 = f1.call(this, arguments);
+            var r2 = f2.call(this, arguments);
+
+            if (typeof r1 === 'object' && typeof r2 === 'object') {
+                return DX.mergeObjects(r1, r2);
+            } else if (typeof r1 === 'function' && typeof r2 === 'function') {
+                return DX.mergeFunctions(r1, r2);
+            } else if (typeof r1 === 'string' && typeof r2 === 'string') {
+                return DX.mergeObjects(r1, r2);
+            } else if (typeof r1 === 'array' && typeof r2 === 'array') {
+                return r1.concat(r2);
+            } else if (typeof r1 !== typeof r2) {
+                return r1.toString() + r2.toString();
+            } else {
+                return r1 + '' + r2;
+            }
         };
     },
 

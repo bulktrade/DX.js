@@ -11,6 +11,7 @@ DX.KendoUI = {
         defaultPopupWindowUpdateButton: 'Grid.PopUp.Update.Button',
         defaultPopupWindowCancelButton: 'Grid.PopUp.Cancel.Button',
         defaultEditFunction: function(e) {
+            e = e[0];
             var popupWindow = e.container.data("kendoWindow");
 
             if (!e.model.get('id')) {

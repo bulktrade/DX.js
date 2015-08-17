@@ -140,7 +140,7 @@ DX.OrientDB = {
                             total: 'total',
                             errors: 'error',
                             model: {
-                                id: '@rid',
+                                id: "['@rid']",
                                 fields: {
 
                                 }
@@ -223,13 +223,14 @@ DX.OrientDB = {
                                         options.take ? options.take : this.defaultPageSize,
                                         '*:-1',
                                         function(result) {
+                                            console.log(result);
+
                                             $orientDBService.query(
                                                 DX.sprintf('SELECT COUNT(*) FROM %s', className),
                                                 options.take ? options.take : this.defaultPageSize,
                                                 '*:-1',
                                                 function(countResult) {
-                                                    console.log(countResult);
-                                                    result['total'] = countResult;
+                                                    result['total'] = countResult.result[0]['COUNT'];
                                                     options.success(result);
                                                 },
                                                 function(result) {
