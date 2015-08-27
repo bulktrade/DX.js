@@ -36,109 +36,196 @@ DX.OrientDB = {
                      */
                     instance.getColumns = function(columns, $translate) {
                         var result = [];
-                        var column;
+
+                        var column = {
+                            field: 'commands',
+                            width: 90,
+                            title: '&nbsp;',
+                            filterable: false,
+                            attributes: {
+                                style: 'text-align: center; white-space: nowrap;'
+                            },
+                            template: function() {
+                                var result = '';
+
+                                result += '<div class="k-grid-edit btn btn-sm btn-primary" ng-click="editActionClick($event)"><i class="fa fa-pencil-square-o"></i></div>';
+                                result += '&nbsp;'
+                                result += '<div class="k-grid-destroy btn btn-sm btn-danger" ng-click="destroyActionClick($event)"><i class="fa fa-trash-o"></i></div>';
+
+                                return result;
+                            },
+                            editable: true,
+                            editor: function(container, options) {
+                                container.prev().hide();
+                                container.hide();
+                            }
+                        };
+
+                        if (columns['commands']) {
+                            column = DX.mergeObjects(column, columns['commands']);
+                        }
+
+                        result.push(column);
 
                         for (var columnName in columns) {
                             for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
                                 var item = orientDBClassSchema.properties[i];
 
                                 if (item.name == columnName) {
-                                    column = {
-                                        field: item.name,
-                                        sortable: true,
-                                        filterable: true,
-                                        editable: true,
-                                        title: $translate ? $translate.instant(orientDBClassSchema.name + '.' + item.name) : item.name
-                                    };
+                                    column = new (function() {
+                                        this.field = item.name;
+                                        this.sortable = true;
+                                        this.filterable = true;
+                                        this.editable = true;
+                                        this.sortable = true;
+                                        this.title = $translate ? $translate.instant(orientDBClassSchema.name + '.' + item.name) : item.name;
 
-                                    console.log(item);
+                                        this.set = function(name, value) {
+                                            this[name] = value;
+                                        };
+                                    });
 
                                     switch (item.type) {
                                         case 'LINK':
-                                            (function(item, $orientDBService, $) {
-                                                column.editor = function(container, options) {
-                                                    $('<input data-text-field="name" data-value-field="value" data-bind="value:' + options.field + '"/>')
-                                                        .appendTo(container)
-                                                        .kendoComboBox({
-                                                            dataTextField: item.name + ".title",
-                                                            dataValueField: item.name + "['@rid']",
-                                                            minLength: 3,
-                                                            dataSource: {
-                                                                serverFiltering: true,
-                                                                schema: {
-                                                                    data: 'result',
-                                                                    model: {
-                                                                        id: "['@rid']"
-                                                                    }
-                                                                },
-                                                                transport: {
-                                                                    read: function(options) {
-                                                                        var filter = '';
+                                            (function(item, column, $orientDBService, $) {
+                                                var editorCallback = new (function() {
+                                                    this.callback = null;
 
-                                                                        if (options.data.filter && options.data.filter.filters.length) {
-                                                                            var addFilter = '';
+                                                    this.exec = function() {
+                                                        if (this.callback) {
+                                                            this.callback.apply(this, arguments);
+                                                        }
+                                                    };
 
-                                                                            for (var i = 0; i < options.data.filter.filters.length; i++) {
-                                                                                if (options.data.filter.filters[0].value) {
-                                                                                    var operator = '=';
-                                                                                    var value = options.data.filter.filters[0].value;
+                                                    this.set = function(name, value) {
+                                                        this[name] = value;
+                                                    };
+                                                });
 
-                                                                                    switch (options.data.filter.filters[0].operator) {
-                                                                                        case 'contains':
-                                                                                            operator = 'LIKE';
-                                                                                            value = '%' + value + '%';
-                                                                                            break;
+                                                column.set('editor', function(container, options) {
+                                                    editorCallback.exec(container, options);
+                                                });
+
+                                                $orientDBService.schema(
+                                                    item.linkedClass,
+                                                    function(classSchema, status, headers, config) {
+                                                        var relationTitle = "['@rid']";
+
+                                                        // SQL: ALTER PROPERTY MyTable.name CUSTOM relationTitle=true
+                                                        for (var i = 0; i < classSchema.properties.length; i++) {
+                                                            if (typeof classSchema.properties[i].custom != 'undefined' && classSchema.properties[i].custom.relationTitle) {
+                                                                relationTitle = classSchema.properties[i].name;
+
+                                                                if (classSchema.properties[i].custom.translateTitle) {
+                                                                    relationTitle = 'translated_' + relationTitle;
+                                                                }
+
+                                                                break;
+                                                            }
+                                                        }
+
+                                                        editorCallback.set('callback', function(container, options) {
+                                                            $('<input/>')
+                                                                .appendTo(container)
+                                                                .kendoComboBox({
+                                                                    dataTextField: relationTitle,
+                                                                    dataValueField: "['@rid']",
+                                                                    minLength: 3,
+                                                                    value: options.model[options.field] ? options.model[options.field]['@rid'] : null,
+                                                                    dataSource: {
+                                                                        serverFiltering: true,
+                                                                        schema: {
+                                                                            data: 'result',
+                                                                            model: {
+                                                                                id: "['@rid']"
+                                                                            }
+                                                                        },
+                                                                        transport: {
+                                                                            read: function(options) {
+                                                                                var filter = '';
+
+                                                                                if (options.data.filter && options.data.filter.filters.length) {
+                                                                                    var addFilter = '';
+
+                                                                                    for (var i = 0; i < options.data.filter.filters.length; i++) {
+                                                                                        if (options.data.filter.filters[0].value) {
+                                                                                            var operator = '=';
+                                                                                            var value = options.data.filter.filters[0].value;
+
+                                                                                            switch (options.data.filter.filters[0].operator) {
+                                                                                                case 'contains':
+                                                                                                    operator = 'LIKE';
+                                                                                                    value = '%' + value + '%';
+                                                                                                    break;
+                                                                                            }
+
+                                                                                            addFilter += (i ? ' AND' : '') + DX.sprintf('%s %s "%s"', relationTitle, operator, value)
+                                                                                        }
                                                                                     }
 
-                                                                                    addFilter += (i ? ' AND' : '') + DX.sprintf('%s %s "%s"', 'title', operator, value)
+                                                                                    if (addFilter !== '') {
+                                                                                        filter += ' WHERE ' + addFilter;
+                                                                                    }
                                                                                 }
-                                                                            }
 
-                                                                            if (addFilter !== '') {
-                                                                                filter += ' WHERE ' + addFilter;
+                                                                                var query = DX.sprintf('SELECT * FROM %s%s', item.linkedClass, filter);
+
+                                                                                $orientDBService.query(
+                                                                                    query,
+                                                                                    options.take ? options.take : this.defaultPageSize,
+                                                                                    '*:-1',
+                                                                                    function(result) {
+                                                                                        $orientDBService.schema(
+                                                                                            item.linkedClass,
+                                                                                            function(classSchema, status, headers, config) {
+                                                                                                // SQL: ALTER PROPERTY Table.column CUSTOM translateTitle=true
+                                                                                                for (var i = 0; i < classSchema.properties.length; i++) {
+                                                                                                    if (typeof classSchema.properties[i].custom != 'undefined' && classSchema.properties[i].custom.translateTitle) {
+                                                                                                        for (var j = 0; j < result.result.length; j++) {
+                                                                                                            if (result.result[j][classSchema.properties[i].name]) {
+                                                                                                                result.result[j]['translated_' + classSchema.properties[i].name] = $translate.instant(item.linkedClass + '.' + result.result[j][classSchema.properties[i].name]);
+                                                                                                            }
+                                                                                                        }
+                                                                                                    }
+                                                                                                }
+
+                                                                                                options.success(result);
+                                                                                            },
+                                                                                            function(data, status, headers, config) {
+                                                                                                /**
+                                                                                                 * @todo Alert?
+                                                                                                 */
+                                                                                                console.log(data, status, headers, config);
+                                                                                                options.success(result);
+                                                                                            });
+                                                                                    },
+                                                                                    function (result) {
+                                                                                        options.error(result);
+                                                                                    });
                                                                             }
                                                                         }
+                                                                    },
+                                                                    filter: "contains",
+                                                                    suggest: true,
+                                                                    select: function(e) {
+                                                                        var item = angular.copy(this.dataItem(e.item.index()));
 
-                                                                        var query = DX.sprintf('SELECT * FROM %s%s', item.linkedClass, filter);
+                                                                        if (relationTitle != "['@rid']") {
+                                                                            delete item[relationTitle];
+                                                                        }
 
-                                                                        console.log(filter);
-                                                                        console.log(options);
-
-                                                                        $orientDBService.query(
-                                                                            query,
-                                                                            options.take ? options.take : this.defaultPageSize,
-                                                                            '*:-1',
-                                                                            function(data) {
-                                                                                var result = [];
-                                                                                for (var i = 0; i < data.result.length; i++) {
-                                                                                    var ritem = {};
-                                                                                    ritem[item.name] = data.result[i];
-                                                                                    result.push(ritem);
-                                                                                }
-
-                                                                                options.success({
-                                                                                    result: result
-                                                                                });
-                                                                            },
-                                                                            function (result) {
-                                                                                options.error(result);
-                                                                            });
+                                                                        options.model.set(options.field, item);
                                                                     }
-                                                                }
-                                                            },
-                                                            filter: "contains",
-                                                            suggest: true,
-                                                            select: function(e) {
-                                                                console.log(this.dataItem());
-                                                                //console.log(e.item);
-                                                                //console.log(e.item.index());
-                                                                //
-                                                                //var dataItem = this.dataItem(e.item.index());
-                                                                //console.log("event :: select (" + dataItem.text + " : " + dataItem.value + ")" );
-                                                            }
+                                                                });
                                                         });
-                                                };
-                                            }(item, $orientDBService, $));
+                                                    },
+                                                    function(data, status, headers, config) {
+                                                        /**
+                                                         * @todo Alert?
+                                                         */
+                                                        console.log(data, status, headers, config);
+                                                    });
+                                            }(item, column, $orientDBService, $));
 
                                             break;
                                         case 'DATE':
@@ -168,36 +255,6 @@ DX.OrientDB = {
                                 }
                             }
                         }
-
-                        column = {
-                            field: 'commands',
-                            width: 90,
-                            title: '&nbsp;',
-                            filterable: false,
-                            attributes: {
-                                style: 'text-align: center; white-space: nowrap;'
-                            },
-                            template: function() {
-                                var result = '';
-
-                                result += '<div class="k-grid-edit btn btn-sm btn-primary" ng-click="editActionClick($event)"><i class="fa fa-pencil-square-o"></i></div>';
-                                result += '&nbsp;'
-                                result += '<div class="k-grid-destroy btn btn-sm btn-danger" ng-click="destroyActionClick($event)"><i class="fa fa-trash-o"></i></div>';
-
-                                return result;
-                            },
-                            editable: true,
-                            editor: function(container, options) {
-                                container.prev().hide();
-                                container.hide();
-                            }
-                        };
-
-                        if (columns['commands']) {
-                            column = DX.mergeObjects(column, columns['commands']);
-                        }
-
-                        result.push(column);
 
                         //if (selectColumns) {
                         //    var tmp = result;
@@ -252,6 +309,9 @@ DX.OrientDB = {
                                     break;
                                 case 'BOOLEAN':
                                     fieldType = 'boolean';
+                                    break;
+                                case 'LINK':
+                                    fieldType = 'link';
                                     break;
                                 case 'DATE':
                                 case 'DATETIME':
@@ -352,6 +412,10 @@ DX.OrientDB = {
                                     console.log('Destroy: ', options);
                                 },
                                 create: function(options) {
+                                    for (var key in options.data.models) {
+                                        delete options.data.models[key]["['@rid']"];
+                                    }
+
                                     console.log('Create: ', options);
                                 },
                                 parameterMap: function(options, operation) {
@@ -427,7 +491,28 @@ DX.OrientDB = {
                             detailTemplate: DX.KendoUI.Grid.defaultDetailTemplate,
                             detailExpand: null,
                             dataBound: null,
-                            edit: DX.KendoUI.Grid.defaultEditFunction,
+                            edit: function(e) {
+                                var popupWindow = e.container.data("kendoWindow");
+
+                                if (!e.model.get('id')) {
+                                    popupWindow.title(options.translate.instant(DX.KendoUI.Grid.defaultPopupWindowCreateTitle));
+                                } else {
+                                    popupWindow.title(options.translate.instant(DX.KendoUI.Grid.defaultPopupWindowUpdateTitle));
+                                }
+
+                                popupWindow.element.find(".k-grid-update").
+                                    removeClass('k-button').
+                                    removeClass('k-button-icontext').
+                                    removeClass('k-primary').
+                                    addClass('btn btn-sm btn-success').
+                                    html("<i class=\"fa fa-check\"></i> " + (!e.model.get('id') ? options.translate.instant(DX.KendoUI.Grid.defaultPopupWindowCreateButton) : options.translate.instant(DX.KendoUI.Grid.defaultPopupWindowUpdateButton)));
+
+                                popupWindow.element.find(".k-grid-cancel").
+                                    removeClass('k-button').
+                                    removeClass('k-button-icontext').
+                                    addClass('btn btn-sm btn-danger').
+                                    html("<i class=\"fa fa-times\"></i> " + options.translate.instant(DX.KendoUI.Grid.defaultPopupWindowCancelButton));
+                            },
                             editable: 'popup',
                             columns: instance.getColumns(
                                 options.columnDefaults,
