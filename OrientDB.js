@@ -36,36 +36,59 @@ DX.OrientDB = {
                      */
                     instance.getColumns = function(columns, $translate) {
                         var result = [];
+                        var column = null;
 
-                        var column = {
-                            field: 'commands',
-                            width: 90,
-                            title: '&nbsp;',
-                            filterable: false,
-                            attributes: {
-                                style: 'text-align: center; white-space: nowrap;'
-                            },
-                            template: function() {
-                                var result = '';
+                        if (columns['checkbox']) {
+                            column = {
+                                field: 'checkbox',
+                                width: 30,
+                                template: '<input type="checkbox" class="checkbox">',
+                                filterable: {
+                                    mode: 'row',
+                                    cell: {
+                                        template: function (args) {
+                                            var checkbox = $('<input type="checkbox" class="checkbox checkbox-all">');
+                                            args.element.replaceWith(checkbox);
+                                        },
+                                        showOperators: false
+                                    }
+                                }
+                            };
 
-                                result += '<div class="k-grid-edit btn btn-sm btn-primary" ng-click="editActionClick($event)"><i class="fa fa-pencil-square-o"></i></div>';
-                                result += '&nbsp;'
-                                result += '<div class="k-grid-destroy btn btn-sm btn-danger" ng-click="destroyActionClick($event)"><i class="fa fa-trash-o"></i></div>';
-
-                                return result;
-                            },
-                            editable: true,
-                            editor: function(container, options) {
-                                container.prev().hide();
-                                container.hide();
-                            }
-                        };
-
-                        if (columns['commands']) {
-                            column = DX.mergeObjects(column, columns['commands']);
+                            result.push(
+                                DX.mergeObjects(column, columns['commands'])
+                            );
                         }
 
-                        result.push(column);
+                        if (columns['commands']) {
+                            column = {
+                                field: 'commands',
+                                width: 90,
+                                title: '&nbsp;',
+                                filterable: false,
+                                attributes: {
+                                    style: 'text-align: center; white-space: nowrap;'
+                                },
+                                template: function() {
+                                    var result = '';
+
+                                    result += '<div class="k-grid-edit btn btn-sm btn-primary" ng-click="editActionClick($event)"><i class="fa fa-pencil-square-o"></i></div>';
+                                    result += '&nbsp;'
+                                    result += '<div class="k-grid-destroy btn btn-sm btn-danger" ng-click="destroyActionClick($event)"><i class="fa fa-trash-o"></i></div>';
+
+                                    return result;
+                                },
+                                editable: true,
+                                editor: function(container, options) {
+                                    container.prev().hide();
+                                    container.hide();
+                                }
+                            };
+
+                            result.push(
+                                DX.mergeObjects(column, columns['commands'])
+                            );
+                        }
 
                         for (var columnName in columns) {
                             for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
@@ -450,8 +473,6 @@ DX.OrientDB = {
                             var item = orientDBClassSchema.properties[i];
                             var fieldType = 'string';
 
-                            console.log(item);
-
                             switch (item.type) {
                                 case 'INTEGER':
                                 case 'SHORT':
@@ -568,13 +589,98 @@ DX.OrientDB = {
                                 },
                                 destroy: function(options) {
                                     console.log('Destroy: ', options);
-                                },
-                                create: function(options) {
-                                    for (var key in options.data.models) {
-                                        delete options.data.models[key]["['@rid']"];
+
+                                    var items = [];
+                                    for (var i = 0; i < options.data.models.length; i++) {
+                                        items.push({
+                                            '@rid': options.data.models[i]['@rid']
+                                        });
                                     }
 
-                                    console.log('Create: ', options);
+                                    $orientDBService.batchDelete(
+                                        items,
+                                        function(data, status, headers, config) {
+                                            options.success({
+                                                result: data
+                                            });
+                                        }, function(data, status, headers, config) {
+                                            console.log(data, status, headers, config);
+
+                                            options.error(data);
+                                        });
+                                },
+                                create: function(options) {
+                                    var items = angular.copy(options.data.models);
+
+                                    for (var key in items) {
+                                        if (typeof items[key]["['@rid']"] != 'undefined') {
+                                            delete items[key]["['@rid']"];
+                                        }
+
+                                        items[key]['@class'] = orientDBClassSchema.name;
+
+                                        for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
+                                            var item = orientDBClassSchema.properties[i];
+
+                                            switch (item.type) {
+                                                case 'LINK':
+                                                    if (items[key][item.name]) {
+                                                        items[key][item.name] = items[key][item.name]['@rid'];
+                                                    }
+
+                                                    break;
+                                                case 'LINKSET':
+                                                    if (items[key][item.name]) {
+                                                        var value = [];
+                                                        for (var k in items[key][item.name]) {
+                                                            value.push(items[key][item.name][k]['@rid']);
+                                                        }
+
+                                                        items[key][item.name] = value;
+                                                    }
+
+                                                    break;
+                                            }
+                                        }
+                                    }
+
+                                    $orientDBService.batchCreate(
+                                        items,
+                                        function(data, status, headers, config) {
+                                            var compare = function(o1, o2) {
+                                                for (var key in o1) {
+                                                    if (
+                                                        typeof o2[key] === 'undefined' ||
+                                                        (
+                                                            o1[key] != o2[key] &&
+                                                            typeof o2[key] == 'string' &&
+                                                            o2[key].search('{SHA-256}') === -1
+                                                        )
+                                                    ) {
+                                                        return false;
+                                                    }
+                                                }
+
+                                                return true;
+                                            };
+
+                                            for (var i = 0; i < data.result.length; i++) {
+                                                for (var j = 0; j < items.length; j++) {
+                                                    if (compare(items[j], data.result[i])) {
+                                                        options.data.models[j]["['@rid']"] = data.result[i]['@rid'];
+                                                        break;
+                                                    }
+                                                }
+                                            }
+
+                                            options.success({
+                                                result: options.data.models
+                                            });
+                                        }, function(data, status, headers, config) {
+                                            console.log(data, status, headers, config);
+
+                                            options.error(data);
+                                        });
                                 },
                                 parameterMap: function(options, operation) {
                                     //if (operation !== "read" && options.models) {
@@ -645,10 +751,10 @@ DX.OrientDB = {
                                 mode: DX.KendoUI.Grid.defaultSortableMode,
                                 allowUnsort: true
                             },
-                            detailInit: null,
-                            detailTemplate: DX.KendoUI.Grid.defaultDetailTemplate,
-                            detailExpand: null,
-                            dataBound: null,
+                            //detailInit: null,
+                            //detailTemplate: DX.KendoUI.Grid.defaultDetailTemplate,
+                            //detailExpand: null,
+                            //dataBound: null,
                             edit: function(e) {
                                 var popupWindow = e.container.data("kendoWindow");
 
@@ -670,6 +776,52 @@ DX.OrientDB = {
                                     removeClass('k-button-icontext').
                                     addClass('btn btn-sm btn-danger').
                                     html("<i class=\"fa fa-times\"></i> " + options.translate.instant(DX.KendoUI.Grid.defaultPopupWindowCancelButton));
+                            },
+                            dataBound: function() {
+                                var grid = this;
+                                this.checkedIds = {};
+
+                                this.table.on('click', '.checkbox' , function(e) {
+                                    var checked = this.checked,
+                                        row = $(this).closest('tr'),
+                                        dataItem = grid.dataItem(row);
+
+                                    if (checked) {
+                                        grid.checkedIds[dataItem.id] = checked;
+                                    } else {
+                                        delete grid.checkedIds[dataItem.id];
+                                    }
+
+                                    if (checked) {
+                                        //-select the row
+                                        row.addClass("k-state-selected");
+                                    } else {
+                                        //-remove selection
+                                        row.removeClass("k-state-selected");
+                                    }
+                                });
+
+                                this.thead.on('click', '.checkbox-all' , function(e) {
+                                    var checked = this.checked;
+                                    if (checked) {
+                                        var items = grid.dataItems();
+                                        for (var i = 0; i < items.length; i++) {
+                                            grid.checkedIds[items[i]['@rid']] = true;
+                                        }
+                                    } else {
+                                        grid.checkedIds = {};
+                                    }
+
+                                    grid.table.find('.checkbox').prop('checked', checked);
+
+                                    if (checked) {
+                                        //-select the row
+                                        $(e.currentTarget).addClass("k-state-selected");
+                                    } else {
+                                        //-remove selection
+                                        $(e.currentTarget).removeClass("k-state-selected");
+                                    }
+                                });
                             },
                             editable: 'popup',
                             columns: instance.getColumns(
