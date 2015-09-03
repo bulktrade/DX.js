@@ -40,15 +40,25 @@ DX.OrientDB = {
 
                         if (columns['checkbox']) {
                             column = {
+                                title: '&nbsp;',
                                 field: 'checkbox',
-                                width: 30,
+                                width: 45,
+                                editable: false,
+                                sortable: false,
+                                editor: function(container, options) {
+                                    container.prev().hide();
+                                    container.hide();
+                                },
                                 template: '<input type="checkbox" class="checkbox">',
                                 filterable: {
                                     mode: 'row',
                                     cell: {
                                         template: function (args) {
-                                            var checkbox = $('<input type="checkbox" class="checkbox checkbox-all">');
+                                            var checkbox = $('<input type="checkbox" class="checkbox checkbox-all" style="position: relative; left: 8px; top: 8px;">');
                                             args.element.replaceWith(checkbox);
+                                        },
+                                        attributes: {
+                                            style: 'text-align: center; white-space: nowrap;'
                                         },
                                         showOperators: false
                                     }
@@ -66,6 +76,7 @@ DX.OrientDB = {
                                 width: 90,
                                 title: '&nbsp;',
                                 filterable: false,
+                                sortable: false,
                                 attributes: {
                                     style: 'text-align: center; white-space: nowrap;'
                                 },
@@ -462,7 +473,7 @@ DX.OrientDB = {
                             total: 'total',
                             errors: 'error',
                             model: {
-                                id: "['@rid']",
+                                id: "rid",
                                 fields: {
 
                                 }
@@ -551,6 +562,10 @@ DX.OrientDB = {
                                         options.take ? options.take : this.defaultPageSize,
                                         '*:-1',
                                         function(result) {
+                                            for (var i = 0; i < result.result.length; i++) {
+                                                result.result[i]['rid'] = result.result[i]['@rid'];
+                                            }
+
                                             $orientDBService.query(
                                                 DX.sprintf('SELECT COUNT(*) FROM %s', className),
                                                 options.take ? options.take : this.defaultPageSize,
@@ -571,25 +586,58 @@ DX.OrientDB = {
                                 update: function(options) {
                                     console.log('Update: ', options);
 
-                                    delete options.data.models[0].password;
-                                    delete options.data.models[0].roles;
-                                    delete options.data.models[0].created;
-                                    delete options.data.models[0]['gender.type'];
-                                    delete options.data.models[0]['language.code'];
+                                    var items = angular.copy(options.data.models);
 
-                                    console.log(options.data.models);
+                                    for (var key in items) {
+                                        items[key]['@class'] = orientDBClassSchema.name;
+                                        delete items[key]['rid'];
+
+                                        for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
+                                            var item = orientDBClassSchema.properties[i];
+
+                                            // ALTER PROPERTY MyTable.name CUSTOM notUpdateIfEmpty=true
+                                            // ALTER PROPERTY MyTable.name CUSTOM notUpdate=true
+                                            if (typeof item.custom != 'undefined') {
+                                                if (item.custom.notUpdateIfEmpty && !items[key][item.name]) {
+                                                    delete items[key][item.name];
+                                                } else if (item.custom.notUpdate) {
+                                                    delete items[key][item.name];
+                                                }
+                                            }
+
+                                            switch (item.type) {
+                                                case 'LINK':
+                                                    if (items[key][item.name]) {
+                                                        items[key][item.name] = items[key][item.name]['@rid'];
+                                                    }
+
+                                                    break;
+                                                case 'LINKSET':
+                                                    if (items[key][item.name]) {
+                                                        var value = [];
+                                                        for (var k in items[key][item.name]) {
+                                                            value.push(items[key][item.name][k]['@rid']);
+                                                        }
+
+                                                        items[key][item.name] = value;
+                                                    }
+
+                                                    break;
+                                            }
+                                        }
+                                    }
 
                                     $orientDBService.batchPatch(
-                                        options.data.models,
+                                        items,
                                         function(data, status, headers, config) {
                                             console.log(data, status, headers, config);
+                                            options.success(data);
                                         }, function(data, status, headers, config) {
                                             console.log(data, status, headers, config);
+                                            options.error(data);
                                         });
                                 },
                                 destroy: function(options) {
-                                    console.log('Destroy: ', options);
-
                                     var items = [];
                                     for (var i = 0; i < options.data.models.length; i++) {
                                         items.push({
@@ -615,6 +663,10 @@ DX.OrientDB = {
                                     for (var key in items) {
                                         if (typeof items[key]["['@rid']"] != 'undefined') {
                                             delete items[key]["['@rid']"];
+                                        }
+
+                                        if (typeof items[key]['rid'] != 'undefined') {
+                                            delete items[key]['rid'];
                                         }
 
                                         items[key]['@class'] = orientDBClassSchema.name;
@@ -794,10 +846,10 @@ DX.OrientDB = {
 
                                     if (checked) {
                                         //-select the row
-                                        row.addClass("k-state-selected");
+                                        row.addClass('k-state-selected');
                                     } else {
                                         //-remove selection
-                                        row.removeClass("k-state-selected");
+                                        row.removeClass('k-state-selected');
                                     }
                                 });
 
@@ -816,14 +868,18 @@ DX.OrientDB = {
 
                                     if (checked) {
                                         //-select the row
-                                        $(e.currentTarget).addClass("k-state-selected");
+                                        $(e.currentTarget).addClass('k-state-selected');
                                     } else {
                                         //-remove selection
-                                        $(e.currentTarget).removeClass("k-state-selected");
+                                        $(e.currentTarget).removeClass('k-state-selected');
                                     }
                                 });
                             },
+                            allowCopy: {
+                                delimeter: ';',
+                            },
                             editable: 'popup',
+                            selectable: "multiple, row",
                             columns: instance.getColumns(
                                 options.columnDefaults,
                                 options.translate
