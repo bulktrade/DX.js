@@ -562,8 +562,16 @@ DX.OrientDB = {
                                         options.take ? options.take : this.defaultPageSize,
                                         '*:-1',
                                         function(result) {
-                                            for (var i = 0; i < result.result.length; i++) {
-                                                result.result[i]['rid'] = result.result[i]['@rid'];
+                                            for (var j = 0; j < result.result.length; j++) {
+                                                result.result[j]['rid'] = result.result[j]['@rid'];
+
+                                                for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
+                                                    var item = orientDBClassSchema.properties[i];
+                                                    if (typeof item.custom != 'undefined' && item.custom.SHA256 && result.result[j][item.name]) {
+                                                        result.result[j]['$' + item.name] = result.result[j][item.name];
+                                                        result.result[j][item.name] = '';
+                                                    }
+                                                }
                                             }
 
                                             $orientDBService.query(
@@ -584,11 +592,8 @@ DX.OrientDB = {
                                         });
                                 },
                                 update: function(options) {
-                                    console.log('Update: ', options);
-
                                     var items = angular.copy(options.data.models);
-
-                                    for (var key in items) {
+                                    for (var key = 0; key < items.length; key++) {
                                         items[key]['@class'] = orientDBClassSchema.name;
                                         delete items[key]['rid'];
 
@@ -602,6 +607,24 @@ DX.OrientDB = {
                                                     delete items[key][item.name];
                                                 } else if (item.custom.notUpdate) {
                                                     delete items[key][item.name];
+                                                }
+
+                                                if (item.custom.SHA256) {
+                                                    if (!items[key][item.name] && typeof items[key]['$' + item.name] !== 'undefined') {
+                                                        items[key][item.name] = items[key]['$' + item.name];
+                                                    } else if (typeof jsSHA !== 'undefined') {
+                                                        // SQL: ALTER PROPERTY OUser.password CUSTOM SHA256=true
+                                                        var shaObj = new jsSHA("SHA-256", "TEXT");
+                                                        shaObj.update(items[key][item.name]);
+                                                        items[key][item.name] = '{SHA-256}' + shaObj.getHash("HEX").toUpperCase();
+                                                    }
+
+                                                    if (typeof items[key]['$' + item.name] !== 'undefined') {
+                                                        delete items[key]['$' + item.name];
+                                                    }
+
+                                                    options.data.models[key]['$' + item.name] = items[key][item.name];
+                                                    options.data.models[key][item.name] = '';
                                                 }
                                             }
 
@@ -627,13 +650,19 @@ DX.OrientDB = {
                                         }
                                     }
 
-                                    $orientDBService.batchPatch(
+                                    $orientDBService.batchUpdate(
                                         items,
                                         function(data, status, headers, config) {
-                                            console.log(data, status, headers, config);
-                                            options.success(data);
+                                            for (var i = 0; i < data.result.length; i++) {
+                                                for (var j = 0; j < options.data.models.length; j++) {
+                                                    if (data.result[i]['@rid'] == options.data.models[j]['@rid']) {
+                                                        options.data.models[j]['@version'] = data.result[i]['@version'];
+                                                    }
+                                                }
+                                            }
+                                            console.log(data);
+                                            options.success(options.data.models);
                                         }, function(data, status, headers, config) {
-                                            console.log(data, status, headers, config);
                                             options.error(data);
                                         });
                                 },
@@ -660,7 +689,7 @@ DX.OrientDB = {
                                 create: function(options) {
                                     var items = angular.copy(options.data.models);
 
-                                    for (var key in items) {
+                                    for (var key = 0; key < items.length; key++) {
                                         if (typeof items[key]["['@rid']"] != 'undefined') {
                                             delete items[key]["['@rid']"];
                                         }
@@ -673,6 +702,16 @@ DX.OrientDB = {
 
                                         for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
                                             var item = orientDBClassSchema.properties[i];
+
+                                            // SQL: ALTER PROPERTY OUser.password CUSTOM SHA256=true
+                                            if (typeof item.custom !== 'undefined' && item.custom.SHA256 && typeof jsSHA !== 'undefined' && items[key][item.name]) {
+                                                var shaObj = new jsSHA("SHA-256", "TEXT");
+                                                shaObj.update(items[key][item.name]);
+                                                items[key][item.name] = '{SHA-256}' + shaObj.getHash("HEX").toUpperCase();
+
+                                                options.data.models[key]['$' + item.name] = items[key][item.name];
+                                                options.data.models[key][item.name] = '';
+                                            }
 
                                             switch (item.type) {
                                                 case 'LINK':
@@ -864,22 +903,23 @@ DX.OrientDB = {
                                         grid.checkedIds = {};
                                     }
 
-                                    grid.table.find('.checkbox').prop('checked', checked);
+                                    var checkbox = grid.table.find('.checkbox');
+                                    checkbox.prop('checked', checked);
 
                                     if (checked) {
                                         //-select the row
-                                        $(e.currentTarget).addClass('k-state-selected');
+                                        checkbox.closest('tr').addClass('k-state-selected');
                                     } else {
                                         //-remove selection
-                                        $(e.currentTarget).removeClass('k-state-selected');
+                                        checkbox.closest('tr').removeClass('k-state-selected');
                                     }
                                 });
                             },
                             allowCopy: {
-                                delimeter: ';',
+                                delimeter: ';'
                             },
                             editable: 'popup',
-                            selectable: "multiple, row",
+                            //selectable: "multiple, row",
                             columns: instance.getColumns(
                                 options.columnDefaults,
                                 options.translate
