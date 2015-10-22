@@ -24,14 +24,6 @@ DX.Grid.Adapter.OrientDB = function($orientDBService, className, options, succes
                 var result = [];
                 var column = null;
 
-                //for (var i = 0; i < orientDBClassSchema.properties.length; i++) {
-                //    var item = orientDBClassSchema.properties[i];
-                //
-                //    if (typeof item.custom != 'undefined') {
-                //
-                //    }
-                //}
-
                 if (columns['checkbox']) {
                     column = {
                         title: '&nbsp;',
